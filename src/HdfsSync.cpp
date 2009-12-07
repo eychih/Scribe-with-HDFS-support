@@ -72,26 +72,27 @@ void HdfsSync::copyToHDFS()
   {
     bool success = false;
     std::string filename = *it;
-	std::string baseFilename = filename;
+        std::string baseFilename = filename;
 
     int found = filename.find_last_of("/");
 
     if (found != string::npos)
     {
       baseFilename = filename.substr(found+1);
-    }    
+    }
 
     hdfsFS fs = hdfsConnect(hdfsHost.c_str(), hdfsPort);
-    if (NULL == fs ) 
+    if (NULL == fs )
     {
       LOG_OPER("Cannot connect to hdfs://%s:%d",hdfsHost.c_str(), hdfsPort);
     }
     else
     {
-      string writePath = hdfsPath + "/" + categoryHandled.c_str() + "/" + hdfs_base_directory.c_str() + hdfs_base_filename.c_str() + baseFilename;              
+      string writePath = hdfsPath + "/" + categoryHandled.c_str() + "/" + hdfs_base_directory.c_str() + h
+dfs_base_filename.c_str() + baseFilename;
       ifstream file_in(filename.c_str(), ios::in | ios::binary);
       hdfsFile dstFile = hdfsOpenFile(fs, writePath.c_str(), O_WRONLY, 0, 0, 0);
-	  if (NULL == dstFile)
+          if (NULL == dstFile)
       {
           LOG_OPER("Cannot open file to write : %s",writePath.c_str());
       }
@@ -101,19 +102,21 @@ void HdfsSync::copyToHDFS()
         while (!file_in.eof())
         {
           file_in.read(buffer, 1024);
-          tSize num_written_bytes = hdfsWrite(fs, dstFile, (void*)buffer, file_in.gcount());      
+          tSize num_written_bytes = hdfsWrite(fs, dstFile, (void*)buffer, file_in.gcount());
         }
         file_in.close();
         hdfsCloseFile(fs, dstFile);
-        
-        LOG_OPER("Copied to HDFS hdfs://%s:%d/%s",hdfsHost.c_str(),hdfsPort,writePath.c_str()); 
+
+        LOG_OPER("Copied to HDFS hdfs://%s:%d/%s",hdfsHost.c_str(),hdfsPort,writePath.c_str());
         success = true;
-        
+
       }
       hdfsDisconnect(fs);
     } // end else
-    if (success)
+    if (success) {
       filesToCopy.erase(it);
+      unlink(filename.c_str());
+    }
     else
       it++;
   } // end while
@@ -128,7 +131,23 @@ bool HdfsSync::openInternal(bool incrementFilename, struct tm* current_time) {
     current_time = localtime(&rawtime);
   }
   try {
-    int suffix = findNewestFile(makeBaseFilename(current_time));
+    std::string base_filename = makeBaseFilename(current_time);
+    int suffix = findNewestFile(base_filename);
+    int suffix1 = -1;
+    if (filesToCopy.size()==0) {
+      std::vector<std::string> files = FileInterface::list(filePath, "std");
+      for (std::vector<std::string>::reverse_iterator iter = files.rbegin();
+           iter != files.rend();
+           ++iter) {
+        suffix1 = getFileSuffix(*iter, base_filename);
+        if (suffix1 > -1 && suffix1 != suffix) {
+           ostringstream filename;
+           filename << filePath << '/';
+           filename << *iter;
+           filesToCopy.push_back(filename.str());
+        }
+      }
+    }
 
     if (incrementFilename) {
       ++suffix;
@@ -150,7 +169,7 @@ bool HdfsSync::openInternal(bool incrementFilename, struct tm* current_time) {
     bool sync = false;
     string fullFilename;
     string baseFilename;
-      
+
     // Save old file
     if (writeFile) {
       if (writeMeta) {
@@ -159,30 +178,31 @@ bool HdfsSync::openInternal(bool incrementFilename, struct tm* current_time) {
 
       if(writeFile->fileSize())
         sync = true;
-      
+
       fullFilename = writeFile->getFileName();
       baseFilename = fullFilename;
       int found = fullFilename.find_last_of("/");
       if (found != string::npos)
       {
         baseFilename = fullFilename.substr(found+1);
-      }      
-   
+      }
+
       writeFile->close();
     }
 
-    copyToHDFS();
-    
     // Open new file
     writeFile = FileInterface::createFileInterface(fsType, file, isBufferFile);
+
+    copyToHDFS();
+
     if (!writeFile) {
-      LOG_OPER("[%s] Failed to create file <%s> of type <%s> for writing", 
+      LOG_OPER("[%s] Failed to create file <%s> of type <%s> for writing",
                categoryHandled.c_str(), file.c_str(), fsType.c_str());
       setStatus("file open error");
       return false;
     }
-    
-    success = writeFile->openWrite();    
+
+    success = writeFile->openWrite();
 
     if (!success) {
       LOG_OPER("[%s] Failed to open file <%s> for writing", categoryHandled.c_str(), file.c_str());
@@ -197,7 +217,7 @@ bool HdfsSync::openInternal(bool incrementFilename, struct tm* current_time) {
     }
     // else it confuses the filename code on reads
 
-	// Open successful, add file to queue
+        // Open successful, add file to queue
     filesToCopy.push_back(file);
 
     LOG_OPER("[%s] Opened file <%s> for writing", categoryHandled.c_str(), file.c_str());
@@ -206,7 +226,7 @@ bool HdfsSync::openInternal(bool incrementFilename, struct tm* current_time) {
     currentSize = writeFile->fileSize();
     currentFilename = file;
     eventsWritten = 0;
-    setStatus("");                
+    setStatus("");
 
     }
   } catch(std::exception const& e) {
@@ -214,7 +234,7 @@ bool HdfsSync::openInternal(bool incrementFilename, struct tm* current_time) {
              categoryHandled.c_str(), fsType.c_str());
     LOG_OPER("Exception: %s", e.what());
     setStatus("file create/open error");
-     
+
     return false;
   }
   return success;
