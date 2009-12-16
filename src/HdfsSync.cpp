@@ -133,6 +133,7 @@ bool HdfsSync::openInternal(bool incrementFilename, struct tm* current_time) {
     std::string base_filename = makeBaseFilename(current_time);
     int suffix = findNewestFile(base_filename);
     int suffix1 = -1;
+
     if (filesToCopy.size()==0) {
       std::vector<std::string> files = FileInterface::list(filePath, "std");
       for (std::vector<std::string>::reverse_iterator iter = files.rbegin();
